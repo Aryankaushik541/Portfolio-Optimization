@@ -1,0 +1,39 @@
+Optimized GA - Single Objective Portfolio Optimisation Report
+================================================================
+
+Date range    : 2010-01-04 to 2026-06-08
+Trading days  : 4131
+Seed          : 748286077
+Risk-free rate: 2.00%
+Runs: 10, Generations: 1000, Population: 50
+Objective: Maximize Sharpe Ratio
+
+Stock Universe:
+  - Apple Inc.
+  - Microsoft Corporation
+  - Alphabet Inc.
+  - Amazon.com, Inc.
+  - JPMorgan Chase & Co.
+  - Johnson & Johnson
+  - Visa Inc.
+  - The Procter & Gamble Company
+  - Exxon Mobil Corporation
+  - NVIDIA Corporation
+Max single-stock weight: 40%
+
+| Portfolio           | Return   | Risk   |   Sharpe | Max Drawdown   |
+|---------------------|----------|--------|----------|----------------|
+| Optimized Portfolio | 27.50%   | 21.58% |   1.1818 | -33.18%        |
+
+| Ticker   | Stock Name                   | Allocation   | Stock Return   | Stock Risk   |   Stock Sharpe |
+|----------|------------------------------|--------------|----------------|--------------|----------------|
+| JNJ      | Johnson & Johnson            | 33.46%       | 12.17%         | 16.91%       |         0.6011 |
+| NVDA     | NVIDIA Corporation           | 26.83%       | 48.12%         | 45.52%       |         1.0132 |
+| AAPL     | Apple Inc.                   | 24.08%       | 27.44%         | 28.07%       |         0.9064 |
+| AMZN     | Amazon.com, Inc.             | 10.58%       | 27.33%         | 32.77%       |         0.7729 |
+| V        | Visa Inc.                    | 5.05%        | 20.13%         | 24.85%       |         0.7297 |
+| JPM      | JPMorgan Chase & Co.         | 0.00%        | 18.41%         | 27.51%       |         0.5966 |
+| XOM      | Exxon Mobil Corporation      | 0.00%        | 11.68%         | 25.01%       |         0.3869 |
+| PG       | The Procter & Gamble Company | 0.00%        | 9.70%          | 17.35%       |         0.4439 |
+| MSFT     | Microsoft Corporation        | 0.00%        | 20.90%         | 25.72%       |         0.735  |
+| GOOGL    | Alphabet Inc.                | 0.00%        | 23.07%         | 27.76%       |         0.759  |
