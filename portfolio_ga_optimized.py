@@ -24,9 +24,9 @@ COMPANY_NAMES = {
     "NVDA": "NVIDIA Corporation",
 }
 
-START_DATE     = "2010-01-01"
-END_DATE       = date.today().isoformat()
-TRADING_DAYS   = 252
+START_DATE     = "2013-01-01"
+END_DATE       = "2023-01-01"
+TRADING_DAYS   = 2517
 RISK_FREE_RATE = 0.02
 SEED           = 748286077
 
@@ -342,7 +342,7 @@ def main():
     parser.add_argument("--max-weight",  type=float, default=GAConfig.max_weight)
     parser.add_argument("--generations", type=int,   default=GAConfig.generations)
     parser.add_argument("--population",  type=int,   default=GAConfig.population_size)
-    parser.add_argument("--runs",        type=int,   default=10)
+    parser.add_argument("--runs",        type=int,   default=30)
     args = parser.parse_args()
 
     cfg = GAConfig(population_size=args.population, generations=args.generations, max_weight=args.max_weight)
@@ -351,7 +351,7 @@ def main():
     print("=" * 54)
     for t in TICKERS:
         print(f"  {COMPANY_NAMES.get(t, t)}")
-    print(f"\nPeriod: {START_DATE} to latest | Runs={args.runs} | Pop={cfg.population_size} | Gen={cfg.generations}")
+    print(f"\nPeriod: {START_DATE} to {END_DATE} | Runs={args.runs} | Pop={cfg.population_size} | Gen={cfg.generations}")
 
     prices  = fetch_prices(TICKERS, START_DATE, END_DATE, use_cache=args.use_cache)
     returns = daily_returns(prices)
