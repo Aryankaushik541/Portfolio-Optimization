@@ -331,23 +331,17 @@ def save_report(tickers, prices, returns, cfg, best, avg_hist, best_hist,
         f.write(tabulate(stock_table, headers=STOCK_TABLE_HEADERS, tablefmt="github"))
         f.write("\n")
 
-    # ── charts ─────────────────────────────────────────────────────────────
-    fig, axes = plt.subplots(2, 2, figsize=(16, 11))
-    ((ax1, ax2), (ax3, ax4)) = axes
+    # ── chart (3-panel: Convergence | Portfolio Weights | Final Sharpe per Run) ──
+    fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(20, 6))
 
-    ax1.plot(avg_hist,  lw=2.5, label="Average Sharpe", color="#e41a1c", alpha=0.9)
-    ax1.plot(best_hist, lw=1.8, ls="--", label="Best Run", color="#2ca02c", alpha=0.85)
-    hist_arr = np.array(all_histories)
-    if hist_arr.shape[0] > 1:
-        ax1.fill_between(range(len(avg_hist)),
-                         np.percentile(hist_arr, 25, axis=0),
-                         np.percentile(hist_arr, 75, axis=0),
-                         alpha=0.15, color="#e41a1c")
+    # Panel 1: Convergence
+    ax1.plot(best_hist, lw=2, color="#2ca02c", label="Best Run Optimization")
     ax1.set_title(f"GA Convergence\n({runs} runs, {cfg.generations} generations)",
                   fontsize=13, fontweight="bold")
     ax1.set_xlabel("Generation", fontsize=11); ax1.set_ylabel("Sharpe Ratio", fontsize=11)
     ax1.legend(fontsize=9, loc="lower right"); ax1.grid(True, alpha=0.3)
 
+    # Panel 2: Optimal Portfolio Weights
     colors = plt.cm.tab10(np.arange(len(tickers)))
     bars = ax2.bar(tickers, weights * 100, color=colors, edgecolor="black", linewidth=1.5)
     ax2.set_title(f"Optimal Portfolio Weights\nReturn={best['return']*100:.2f}%  |  "
@@ -356,59 +350,35 @@ def save_report(tickers, prices, returns, cfg, best, avg_hist, best_hist,
     ax2.set_ylabel("Allocation (%)", fontsize=11)
     ax2.tick_params(axis="x", rotation=45)
     ax2.bar_label(bars, labels=[f"{w*100:.1f}%" if w > 0.001 else "" for w in weights],
-                  padding=3, fontsize=9)
+                  padding=3, fontsize=9, fontweight="bold")
     ax2.set_ylim(0, max(weights * 100) * 1.25)
     ax2.grid(True, axis="y", alpha=0.3)
 
-    best_idx_run  = int(np.argmax(sharpes))
-    worst_idx_run = int(np.argmin(sharpes))
-    run_labels  = ["Best Run", "Mean Run", "Worst Run"]
-    run_returns = [all_metrics[best_idx_run]["return"]*100,
-                   float(np.mean([m["return"] for m in all_metrics]))*100,
-                   all_metrics[worst_idx_run]["return"]*100]
-    run_risks   = [all_metrics[best_idx_run]["risk"]*100,
-                   float(np.mean([m["risk"] for m in all_metrics]))*100,
-                   all_metrics[worst_idx_run]["risk"]*100]
-    run_sharpes_x20     = [sharpes[best_idx_run]*20, mean_sharpe*20, sharpes[worst_idx_run]*20]
-    run_sharpes_actual  = [sharpes[best_idx_run], mean_sharpe, sharpes[worst_idx_run]]
-    x_pos = np.arange(3); bw = 0.25
-    ax3.bar(x_pos-bw, run_returns,      bw, label="Return (%)",  color="#4c72b0", edgecolor="black")
-    ax3.bar(x_pos,    run_risks,         bw, label="Risk (%)",    color="#dd8452", edgecolor="black")
-    ax3.bar(x_pos+bw, run_sharpes_x20,  bw, label="Sharpe x20",  color="#55a868", edgecolor="black")
-    for i,(r,k,s) in enumerate(zip(run_returns, run_risks, run_sharpes_actual)):
-        ax3.text(i-bw, r+0.5, f"{r:.2f}%", ha="center", fontsize=8)
-        ax3.text(i,    k+0.5, f"{k:.2f}%", ha="center", fontsize=8)
-        ax3.text(i+bw, run_sharpes_x20[i]+0.5, f"{s:.4f}", ha="center", fontsize=8)
-    ax3.set_title("Run Performance Comparison\n(Best, Mean, Worst)", fontsize=13, fontweight="bold")
-    ax3.set_ylabel("Value", fontsize=11)
-    ax3.set_xticks(x_pos); ax3.set_xticklabels(run_labels)
-    ax3.legend(fontsize=9); ax3.grid(True, axis="y", alpha=0.3)
-
+    # Panel 3: Final Sharpe per Run
+    run_numbers = np.arange(1, runs + 1)
+    bar_colors  = ["#ff7f0e" if i == best_idx else "#1f77b4" for i in range(runs)]
+    ax3.bar(run_numbers, sharpes, color=bar_colors, edgecolor="black", linewidth=0.8)
+    ax3.axhline(mean_sharpe, color="#2ca02c", ls="--", lw=1.8, alpha=0.8)
     spread = float(np.ptp(sharpes))
-    if spread < 1e-6:
-        ax4.bar([0], [len(sharpes)], width=0.5, color="#2ca02c", alpha=0.8, edgecolor="black", linewidth=1.5)
-        ax4.set_xticks([0]); ax4.set_xticklabels([f"{mean_sharpe:.4f}"])
-        ax4.set_title(f"Sharpe Distribution\n({runs} runs, all converged to {mean_sharpe:.4f})",
-                      fontsize=12, fontweight="bold")
-        ax4.set_ylim(0, len(sharpes) * 1.2)
-    else:
-        bins = min(15, max(3, runs // 2))
-        ax4.hist(sharpes, bins=bins, color="#2ca02c", alpha=0.72, edgecolor="black", linewidth=1.5)
-        ax4.axvline(mean_sharpe, color="#e41a1c", ls="--", lw=2.5, label=f"Mean = {mean_sharpe:.4f}")
-        ax4.axvline(max_sharpe,  color="#2ca02c", lw=2.5,           label=f"Best = {max_sharpe:.4f}")
-        ax4.set_title(f"Sharpe Distribution\nacross {runs} Independent Runs",
-                      fontsize=12, fontweight="bold")
-        ax4.set_xlim(mean_sharpe - spread*1.8, mean_sharpe + spread*1.8)
-        ax4.legend(fontsize=9)
-    ax4.set_xlabel("Sharpe Ratio", fontsize=10); ax4.set_ylabel("Frequency", fontsize=10)
-    ax4.grid(True, alpha=0.3, axis="y")
+    pad = max(spread * 0.6, mean_sharpe * 0.002, 1e-6)
+    ax3.set_ylim(sharpes.min() - pad, sharpes.max() + pad)
+    ax3.set_title("Final Sharpe per Run", fontsize=13, fontweight="bold")
+    ax3.set_xlabel("Run", fontsize=11); ax3.set_ylabel("Sharpe Ratio", fontsize=11)
+    ax3.set_xticks(run_numbers)
+    ax3.tick_params(axis="x", labelsize=8)
+    from matplotlib.patches import Patch
+    from matplotlib.lines import Line2D
+    legend_elems = [Patch(facecolor="#ff7f0e", edgecolor="black", label=f"Best Run #{best_idx+1}"),
+                    Patch(facecolor="#1f77b4", edgecolor="black", label="Other Runs")]
+    ax3.legend(handles=legend_elems, fontsize=8, loc="upper right")
+    ax3.grid(True, axis="y", alpha=0.3)
 
     fig.suptitle(
         "Optimized GA - Single Objective Portfolio Optimisation (Maximise Sharpe Ratio)\n"
         f"Data: S&P 500 Yahoo Finance {prices.index[0].date()} to {prices.index[-1].date()} | "
         f"Seed: {SEED} | RF = {RISK_FREE_RATE*100:.1f}%",
-        fontsize=15, fontweight="bold")
-    plt.tight_layout(rect=[0, 0, 1, 0.94])
+        fontsize=13, fontweight="bold", y=0.99)
+    fig.subplots_adjust(top=0.80, bottom=0.13, left=0.045, right=0.99, wspace=0.25)
     plt.savefig(chart_path, dpi=160, bbox_inches="tight")
     plt.close(fig)
     return report_path, chart_path, portfolio_table, stock_table, run_results, run_stats
@@ -424,8 +394,17 @@ def main():
     cfg = GAConfig(population_size=args.population, generations=args.generations)
 
     print("\n" + "=" * 80)
-    print("  OPTIMIZED GA — PORTFOLIO OPTIMISATION")
-    print("  Objective: Maximise Sharpe Ratio")
+    print("  GA — SINGLE OBJECTIVE PORTFOLIO OPTIMISATION")
+    print(f"  Objective  : Maximise Sharpe Ratio")
+    print(f"  Formula    : Sharpe = (Rp - Rf) / sigma_p")
+    print(f"  Risk Free  : {RISK_FREE_RATE*100:.1f}%  (US T-bill avg 2013-2023)")
+    print(f"  Algorithm  : Genetic Algorithm")
+    print(f"  Dataset    : Yahoo Finance {START_DATE[:4]}–{END_DATE[:4]}")
+    print(f"  Seed       : {SEED}")
+    print(f"  GA Config  : Pop={cfg.population_size} | Gen={cfg.generations} | "
+          f"Elite={cfg.elite_size} | Tour={cfg.tournament_size} | "
+          f"Crossover={cfg.crossover_rate:.2f} | Mutation={cfg.mutation_rate:.2f}")
+    print(f"  Guide      : Prof. Sriyankar Acharyya")
     print("=" * 80)
 
     prices  = fetch_prices(TICKERS, START_DATE, END_DATE, use_cache=args.use_cache)
