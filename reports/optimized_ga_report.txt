@@ -1,59 +1,73 @@
 ================================================================================
-  OPTIMIZED GA — PORTFOLIO OPTIMISATION REPORT
-  Single-Objective Genetic Algorithm | Objective: Maximise Sharpe Ratio
+  GA — SINGLE OBJECTIVE PORTFOLIO OPTIMISATION
+  Objective  : Maximise Sharpe Ratio
+  Formula    : Sharpe = (Rp - Rf) / sigma_p
+  Risk Free  : 2.0%  (US T-bill avg 2013-2023)
+  Algorithm  : Genetic Algorithm
+  Dataset    : Yahoo Finance 2013–2023
+  Seed       : 748286
+  GA Config  : Pop=120 | Gen=1200 | Elite=2 | Tour=5 | Crossover=0.85 | Mutation=0.25
+  Guide      : Prof. Sriyankar Acharyya
 ================================================================================
 
-DATASET SOURCE
+DATASET
 --------------------------------------------------------------------------------
-Provider      : Yahoo Finance (via yfinance)
-Price field   : Adjusted Close (auto_adjust=True)
-Universe      : 10 stocks
-Date range    : 2013-01-02 to 2022-12-30
-Trading days  : 2517
-Random seed   : 748286077
-Risk-free rate: 2.00% (annualised)
+Source  : Yahoo Finance (yfinance) | Price field: Adjusted Close
+Period  : 2013-01-03 to 2022-12-30 | Trading days: 2516 | Stocks: 10
+CSV     : C:\Users\Aryan\OneDrive\New folder\Desktop\optimized_portfolio_ga\data\yahoo_prices_20130103_20230103.csv
 
-GA CONFIGURATION & TUNING PARAMETERS
---------------------------------------------------------------------------------
-Total Runs              : 30
-Generations per Run    : 1200
-Population Size        : 120
-Elite Size             : 5
-Tournament Size        : 7
-Crossover Rate         : 0.90
-Mutation Rate          : 0.12
-Objective              : Maximise Sharpe Ratio
+Per-Run Results (all 30 independent GA runs):
+| Run       | Return   | Risk   |   Sharpe Ratio |
+|-----------|----------|--------|----------------|
+| 1         | 31.84%   | 25.97% |         1.149  |
+| 2         | 29.94%   | 24.63% |         1.1343 |
+| 3         | 32.16%   | 26.43% |         1.1411 |
+| 4         | 31.81%   | 26.02% |         1.1454 |
+| 5         | 29.42%   | 24.13% |         1.1363 |
+| 6         | 30.19%   | 24.46% |         1.1521 |
+| 7         | 32.70%   | 26.63% |         1.1525 |
+| 8         | 31.91%   | 26.00% |         1.1504 |
+| 9         | 30.49%   | 24.73% |         1.1522 |
+| 10        | 29.96%   | 24.58% |         1.1372 |
+| 11        | 31.98%   | 26.13% |         1.1471 |
+| 12        | 32.12%   | 26.36% |         1.1425 |
+| 13        | 28.08%   | 23.22% |         1.123  |
+| 14        | 29.47%   | 23.89% |         1.15   |
+| 15        | 27.73%   | 22.56% |         1.1403 |
+| 16        | 29.47%   | 23.95% |         1.1468 |
+| 17        | 29.87%   | 24.32% |         1.1461 |
+| 18        | 32.44%   | 26.67% |         1.1413 |
+| 19        | 28.53%   | 23.15% |         1.1461 |
+| 20        | 29.89%   | 24.64% |         1.132  |
+| 21        | 32.18%   | 26.50% |         1.1392 |
+| 22        | 27.79%   | 22.71% |         1.1356 |
+| 23        | 28.95%   | 23.36% |         1.1537 |
+| 24 (Best) | 30.12%   | 24.32% |         1.1559 |
+| 25        | 31.96%   | 26.19% |         1.144  |
+| 26        | 33.32%   | 27.37% |         1.1446 |
+| 27        | 31.25%   | 25.43% |         1.1501 |
+| 28        | 29.47%   | 23.88% |         1.15   |
+| 29        | 31.78%   | 25.97% |         1.1468 |
+| 30        | 30.11%   | 24.79% |         1.1336 |
 
-STOCK UNIVERSE
---------------------------------------------------------------------------------
-  - AAPL   Apple Inc.
-  - MSFT   Microsoft Corporation
-  - GOOGL  Alphabet Inc.
-  - AMZN   Amazon.com, Inc.
-  - JPM    JPMorgan Chase & Co.
-  - JNJ    Johnson & Johnson
-  - V      Visa Inc.
-  - PG     The Procter & Gamble Company
-  - XOM    Exxon Mobil Corporation
-  - NVDA   NVIDIA Corporation
+Run Statistics Summary (Mean / Min / Max / Std Dev):
+| Metric       |   Mean |   Min |    Max |   Std Dev |
+|--------------|--------|-------|--------|-----------|
+| Sharpe Ratio |  1.144 | 1.123 | 1.1559 |    0.0076 |
 
-OPTIMIZED PORTFOLIO METRICS
-================================================================================
-| Mean   | Min    | Max   | Std Dev   |   Sharpe Ratio |
-|--------|--------|-------|-----------|----------------|
-| 0.12%  | -2.32% | 2.27% | 23.63%    |         1.1601 |
+| Portfolio           | Return   | Risk   |   Sharpe |
+|---------------------|----------|--------|----------|
+| Optimized Portfolio | 30.12%   | 24.32% |   1.1559 |
 
-OPTIMAL PORTFOLIO STOCK BREAKDOWN
---------------------------------------------------------------------------------
-| Ticker   | Stock Name                   | Allocation   | Mean   | Min    | Max   | Std Dev   |   Sharpe |
-|----------|------------------------------|--------------|--------|--------|-------|-----------|----------|
-| NVDA     | NVIDIA Corporation           | 35.03%       | 0.19%  | -4.11% | 4.52% | 44.27%    |   1.0589 |
-| JNJ      | Johnson & Johnson            | 30.48%       | 0.05%  | -1.59% | 1.59% | 17.68%    |   0.6472 |
-| MSFT     | Microsoft Corporation        | 22.68%       | 0.11%  | -2.59% | 2.54% | 27.03%    |   0.9335 |
-| PG       | The Procter & Gamble Company | 7.33%        | 0.05%  | -1.58% | 1.63% | 18.32%    |   0.5697 |
-| AAPL     | Apple Inc.                   | 4.47%        | 0.10%  | -2.71% | 2.84% | 29.06%    |   0.7805 |
-| V        | Visa Inc.                    | 0.00%        | 0.08%  | -2.40% | 2.25% | 25.18%    |   0.7408 |
-| JPM      | JPMorgan Chase & Co.         | 0.00%        | 0.07%  | -2.48% | 2.48% | 26.81%    |   0.571  |
-| XOM      | Exxon Mobil Corporation      | 0.00%        | 0.04%  | -2.50% | 2.72% | 26.76%    |   0.299  |
-| GOOGL    | Alphabet Inc.                | 0.00%        | 0.08%  | -2.54% | 2.53% | 27.07%    |   0.6467 |
-| AMZN     | Amazon.com, Inc.             | 0.00%        | 0.10%  | -3.06% | 3.09% | 32.61%    |   0.6775 |
+| Ticker   | Stock Name                   | Allocation   |
+|----------|------------------------------|--------------|
+| NVDA     | NVIDIA Corporation           | 36.82%       |
+| JNJ      | Johnson & Johnson            | 31.52%       |
+| MSFT     | Microsoft Corporation        | 17.36%       |
+| AMZN     | Amazon.com, Inc.             | 7.11%        |
+| AAPL     | Apple Inc.                   | 2.92%        |
+| PG       | The Procter & Gamble Company | 2.22%        |
+| V        | Visa Inc.                    | 1.46%        |
+| JPM      | JPMorgan Chase & Co.         | 0.60%        |
+| GOOGL    | Alphabet Inc.                | 0.00%        |
+| XOM      | Exxon Mobil Corporation      | 0.00%        |
