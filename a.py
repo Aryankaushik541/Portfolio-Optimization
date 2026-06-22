@@ -32,12 +32,12 @@ REPORT_DIR = OUTPUT_DIR / "reports"
 
 @dataclass(frozen=True)
 class GAConfig:
-    population_size: int   = 120
-    generations:     int   = 1200
-    elite_size:      int   = 2      # reduced from 5 -> less lock-in, more run-to-run variation
-    tournament_size: int   = 5      # reduced from 7 -> weaker selection pressure, more diversity
-    crossover_rate:  float = 0.85
-    mutation_rate:   float = 0.25   # increased from 0.12 -> more diversity across runs
+    population_size: int   = 100
+    generations:     int   = 50
+    elite_size:      int   = 3
+    tournament_size: int   = 3
+    crossover_rate:  float = 0.9
+    mutation_rate:   float = 0.15
 
 # ── data ──────────────────────────────────────────────────────────────────────
 def fetch_prices(tickers, start, end, use_cache=False):
@@ -67,14 +67,6 @@ def daily_returns(prices):
     return r
 
 def block_bootstrap_stats(rng, returns_matrix, block_frac=0.25, frac=0.98, blend=0.35):
-    """Resample the daily returns matrix in contiguous blocks (preserves
-    autocorrelation/regime structure, unlike i.i.d. shuffling) to get a
-    mean/cov estimate that's a plausible variant of the full-sample estimate.
-    The result is blended with the original full-sample estimate (blend =
-    weight given to the resampled estimate) so each run sees a gentle,
-    controlled perturbation rather than a substantially different
-    landscape -- enough to produce genuine small run-to-run spread without
-    swinging to a completely different optimum."""
     n_days = returns_matrix.shape[0]
     block_size = max(int(n_days * block_frac), 20)
     target_n = max(int(n_days * frac), block_size * 5)
@@ -162,21 +154,18 @@ def mutate(rng, weights, generation, cfg):
     return repair_weights(w)
 
 def run_ga(mean_daily, cov_daily, returns_matrix, cfg, seed=SEED):
-    """Runs the GA against a block-bootstrap resample of the data (a
-    plausible variant of the full-sample estimate), so each independent run
-    explores a slightly different landscape and produces genuine spread in
-    results. Final reported metrics (return/risk/sharpe) are always computed
-    against the FULL original dataset, so they stay an honest evaluation of
-    the discovered portfolio on real history -- only the search process
-    varies per run, not the scoring of the final answer."""
     rng = np.random.default_rng(seed)
     boot_mean, boot_cov = block_bootstrap_stats(rng, returns_matrix)
     n_assets   = len(mean_daily)
     population = init_population(rng, n_assets, cfg)
     best_w     = None
     best_score = -np.inf
-    last_full_score = -np.inf
-    history    = []
+    last_full_score  = -np.inf
+    last_full_return = 0.0
+    last_full_risk   = 0.0
+    history        = []
+    return_history = []
+    risk_history   = []
     for gen in range(cfg.generations):
         scores = score_population(population, boot_mean, boot_cov, RISK_FREE_RATE)
         order  = np.argsort(scores)[::-1]
@@ -184,9 +173,12 @@ def run_ga(mean_daily, cov_daily, returns_matrix, cfg, seed=SEED):
         if top > best_score + 1e-8:
             best_score = top
             best_w     = population[order[0]].copy()
-            # recompute the honest full-dataset score only when the candidate changes
-            last_full_score = float(score_population(best_w[None, :], mean_daily, cov_daily, RISK_FREE_RATE)[0])
+            last_full_score  = float(score_population(best_w[None, :], mean_daily, cov_daily, RISK_FREE_RATE)[0])
+            last_full_return = float(best_w @ mean_daily * TRADING_DAYS)
+            last_full_risk   = float(np.sqrt(max(best_w @ cov_daily @ best_w * TRADING_DAYS, 0.0)))
         history.append(last_full_score)
+        return_history.append(last_full_return)
+        risk_history.append(last_full_risk)
         new_pop = [population[i].copy() for i in order[:cfg.elite_size]]
         while len(new_pop) < cfg.population_size:
             p1    = tournament_select(rng, population, scores, cfg)
@@ -195,12 +187,12 @@ def run_ga(mean_daily, cov_daily, returns_matrix, cfg, seed=SEED):
             child = mutate(rng, child, gen, cfg)
             new_pop.append(child)
         population = np.array(new_pop)
-    return portfolio_metrics(best_w, mean_daily, cov_daily, returns_matrix, RISK_FREE_RATE), history
+    return portfolio_metrics(best_w, mean_daily, cov_daily, returns_matrix, RISK_FREE_RATE), history, return_history, risk_history
 
 def _ga_worker(args):
     mean_daily, cov_daily, returns_matrix, cfg, seed, run_idx, total, tickers = args
-    result, history = run_ga(mean_daily, cov_daily, returns_matrix, cfg, seed)
-    return run_idx, result, history
+    result, history, return_history, risk_history = run_ga(mean_daily, cov_daily, returns_matrix, cfg, seed)
+    return run_idx, result, history, return_history, risk_history
 
 def run_ga_multi(mean_daily, cov_daily, returns_matrix, cfg, runs, tickers, seed=SEED):
     import multiprocessing as mp
@@ -216,17 +208,25 @@ def run_ga_multi(mean_daily, cov_daily, returns_matrix, cfg, runs, tickers, seed
         with ctx.Pool(processes=workers) as pool:
             results = pool.map(_ga_worker, tasks)
     results.sort(key=lambda item: item[0])
-    all_metrics   = []
-    all_histories = []
-    for run_idx, result, history in results:
+    all_metrics         = []
+    all_histories       = []
+    all_return_histories = []
+    all_risk_histories   = []
+    for run_idx, result, history, return_history, risk_history in results:
         print(f"  Run {run_idx+1:>3}/{runs}  ->  Return: {result['return']*100:6.2f}%  |  "
               f"Risk: {result['risk']*100:6.2f}%  |  Sharpe: {result['sharpe']:.4f}", flush=True)
         all_metrics.append(result)
         all_histories.append(history)
+        all_return_histories.append(return_history)
+        all_risk_histories.append(risk_history)
     best_idx  = int(np.argmax([m["sharpe"] for m in all_metrics]))
     avg_hist  = np.mean(np.array(all_histories), axis=0)
     best_hist = np.array(all_histories[best_idx])
-    return all_metrics[best_idx], avg_hist, best_hist, all_metrics, all_histories, best_idx
+    best_return_hist = np.array(all_return_histories[best_idx])
+    best_risk_hist   = np.array(all_risk_histories[best_idx])
+    return (all_metrics[best_idx], avg_hist, best_hist,
+            all_metrics, all_histories, best_idx,
+            best_return_hist, best_risk_hist)
 
 # ── reporting ─────────────────────────────────────────────────────────────────
 PORTFOLIO_TABLE_HEADERS = ["Portfolio", "Return", "Risk", "Sharpe"]
@@ -235,7 +235,6 @@ RUN_RESULTS_HEADERS     = ["Run", "Return", "Risk", "Sharpe Ratio"]
 RUN_STATS_HEADERS       = ["Metric", "Mean", "Min", "Max", "Std Dev"]
 
 def stock_annual_stats(tickers, returns):
-    """Annualised Return / Risk / Sharpe for each stock held on its own."""
     returns_array = returns.to_numpy()
     stats = {}
     for idx, ticker in enumerate(tickers):
@@ -273,14 +272,14 @@ def build_run_stats_table(all_metrics):
               f"{sharpes.max():.4f}", f"{std_dev:.4f}"]]
 
 def save_report(tickers, prices, returns, cfg, best, avg_hist, best_hist,
-                all_metrics, all_histories, runs, best_idx):
+                all_metrics, all_histories, runs, best_idx,
+                best_return_hist, best_risk_hist):
     REPORT_DIR.mkdir(parents=True, exist_ok=True)
     report_path = REPORT_DIR / "optimized_ga_report.txt"
     chart_path  = REPORT_DIR / "optimized_ga_result.png"
     sharpes     = np.array([m["sharpe"] for m in all_metrics])
     weights     = best["weights"]
     mean_sharpe = float(np.mean(sharpes))
-    max_sharpe  = float(np.max(sharpes))
 
     stock_stats     = stock_annual_stats(tickers, returns)
     portfolio_table = build_portfolio_table(best)
@@ -289,7 +288,6 @@ def save_report(tickers, prices, returns, cfg, best, avg_hist, best_hist,
     run_stats       = build_run_stats_table(all_metrics)
 
     with report_path.open("w", encoding="utf-8") as f:
-        # ── PROJECT HEADER ────────────────────────────────────────────────────
         f.write("=" * 80 + "\n")
         f.write("  GA — SINGLE OBJECTIVE PORTFOLIO OPTIMISATION\n")
         f.write(f"  Objective  : Maximise Sharpe Ratio\n")
@@ -304,7 +302,6 @@ def save_report(tickers, prices, returns, cfg, best, avg_hist, best_hist,
         f.write(f"  Guide      : Prof. Sriyankar Acharyya\n")
         f.write("=" * 80 + "\n\n")
 
-        # ── DATASET & CSV PATH ────────────────────────────────────────────────
         f.write("DATASET\n")
         f.write("-" * 80 + "\n")
         f.write(f"Source  : Yahoo Finance (yfinance) | Price field: Adjusted Close\n")
@@ -313,44 +310,56 @@ def save_report(tickers, prices, returns, cfg, best, avg_hist, best_hist,
         csv_path = DATA_DIR / f"yahoo_prices_{START_DATE}_{END_DATE}.csv".replace("-", "")
         f.write(f"CSV     : {csv_path}\n\n")
 
-        # ── PER-RUN RESULTS (first) ─────────────────────────────────────────
         f.write(f"Per-Run Results (all {runs} independent GA runs):\n")
         f.write(tabulate(run_results, headers=RUN_RESULTS_HEADERS, tablefmt="github"))
         f.write("\n\n")
 
-        # ── RUN STATISTICS SUMMARY (second) ─────────────────────────────────
         f.write("Run Statistics Summary (Mean / Min / Max / Std Dev):\n")
         f.write(tabulate(run_stats, headers=RUN_STATS_HEADERS, tablefmt="github"))
         f.write("\n\n")
 
-        # ── PORTFOLIO SUMMARY (third) ───────────────────────────────────────
         f.write(tabulate(portfolio_table, headers=PORTFOLIO_TABLE_HEADERS, tablefmt="github"))
         f.write("\n\n")
 
-        # ── STOCK ALLOCATION BREAKDOWN (fourth) ─────────────────────────────
         f.write(tabulate(stock_table, headers=STOCK_TABLE_HEADERS, tablefmt="github"))
         f.write("\n")
 
-    # ── chart (3-panel: Convergence | Portfolio Weights | Final Sharpe per Run) ──
-    fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(20, 6))
+    # ── chart (5-panel layout) ────────────────────────────────────────────────
+    fig = plt.figure(figsize=(28, 10))
 
-    # Panel 1: Convergence
-    ax1.plot(best_hist, lw=2, color="#2ca02c", label="Best Run Optimization")
-    ax1.set_title(f"GA Convergence\n({runs} runs, {cfg.generations} generations)",
-                  fontsize=13, fontweight="bold")
-    ax1.set_xlabel("Generation", fontsize=11); ax1.set_ylabel("Sharpe Ratio", fontsize=11)
-    ax1.legend(fontsize=9, loc="lower right"); ax1.grid(True, alpha=0.3)
+    # 2 rows x 3 cols grid; panels 4 & 5 span bottom-left and bottom-mid
+    # Layout: top row = 3 panels (Sharpe convergence | Weights | Sharpe per run)
+    #         bottom row = 2 panels centred (Return convergence | Risk convergence)
+    gs = fig.add_gridspec(2, 3, hspace=0.55, wspace=0.28,
+                          left=0.05, right=0.98, top=0.82, bottom=0.10)
+
+    ax1 = fig.add_subplot(gs[0, 0])
+    ax2 = fig.add_subplot(gs[0, 1])
+    ax3 = fig.add_subplot(gs[0, 2])
+    ax4 = fig.add_subplot(gs[1, 0])
+    ax5 = fig.add_subplot(gs[1, 1])
+
+    generations = np.arange(1, cfg.generations + 1)
+
+    # Panel 1: Sharpe Convergence
+    ax1.plot(generations, best_hist, lw=2, color="#2ca02c", label="Best Run Optimization")
+    ax1.set_title(f"GA Convergence — Sharpe Ratio\n({runs} runs, {cfg.generations} generations)",
+                  fontsize=12, fontweight="bold")
+    ax1.set_xlabel("Generation", fontsize=10)
+    ax1.set_ylabel("Sharpe Ratio", fontsize=10)
+    ax1.legend(fontsize=8, loc="lower right")
+    ax1.grid(True, alpha=0.3)
 
     # Panel 2: Optimal Portfolio Weights
     colors = plt.cm.tab10(np.arange(len(tickers)))
     bars = ax2.bar(tickers, weights * 100, color=colors, edgecolor="black", linewidth=1.5)
     ax2.set_title(f"Optimal Portfolio Weights\nReturn={best['return']*100:.2f}%  |  "
                   f"Risk={best['risk']*100:.2f}%  |  Sharpe={best['sharpe']:.4f}",
-                  fontsize=12, fontweight="bold")
-    ax2.set_ylabel("Allocation (%)", fontsize=11)
+                  fontsize=11, fontweight="bold")
+    ax2.set_ylabel("Allocation (%)", fontsize=10)
     ax2.tick_params(axis="x", rotation=45)
     ax2.bar_label(bars, labels=[f"{w*100:.1f}%" if w > 0.001 else "" for w in weights],
-                  padding=3, fontsize=9, fontweight="bold")
+                  padding=3, fontsize=8, fontweight="bold")
     ax2.set_ylim(0, max(weights * 100) * 1.25)
     ax2.grid(True, axis="y", alpha=0.3)
 
@@ -362,23 +371,43 @@ def save_report(tickers, prices, returns, cfg, best, avg_hist, best_hist,
     spread = float(np.ptp(sharpes))
     pad = max(spread * 0.6, mean_sharpe * 0.002, 1e-6)
     ax3.set_ylim(sharpes.min() - pad, sharpes.max() + pad)
-    ax3.set_title("Final Sharpe per Run", fontsize=13, fontweight="bold")
-    ax3.set_xlabel("Run", fontsize=11); ax3.set_ylabel("Sharpe Ratio", fontsize=11)
+    ax3.set_title("Final Sharpe per Run", fontsize=12, fontweight="bold")
+    ax3.set_xlabel("Run", fontsize=10)
+    ax3.set_ylabel("Sharpe Ratio", fontsize=10)
     ax3.set_xticks(run_numbers)
-    ax3.tick_params(axis="x", labelsize=8)
+    ax3.tick_params(axis="x", labelsize=7)
     from matplotlib.patches import Patch
-    from matplotlib.lines import Line2D
     legend_elems = [Patch(facecolor="#ff7f0e", edgecolor="black", label=f"Best Run #{best_idx+1}"),
                     Patch(facecolor="#1f77b4", edgecolor="black", label="Other Runs")]
     ax3.legend(handles=legend_elems, fontsize=8, loc="upper right")
     ax3.grid(True, axis="y", alpha=0.3)
 
+    # Panel 4: Return Convergence (best run)
+    ax4.plot(generations, np.array(best_return_hist) * 100, lw=2, color="#1f77b4", label="Best Run")
+    ax4.set_title(f"GA Convergence — Annual Return\n(Best Run #{best_idx+1})",
+                  fontsize=12, fontweight="bold")
+    ax4.set_xlabel("Generation", fontsize=10)
+    ax4.set_ylabel("Annual Return (%)", fontsize=10)
+    ax4.legend(fontsize=8, loc="lower right")
+    ax4.grid(True, alpha=0.3)
+    ax4.yaxis.set_major_formatter(plt.FuncFormatter(lambda v, _: f"{v:.1f}%"))
+
+    # Panel 5: Risk Convergence (best run)
+    ax5.plot(generations, np.array(best_risk_hist) * 100, lw=2, color="#d62728", label="Best Run")
+    ax5.set_title(f"GA Convergence — Annual Risk\n(Best Run #{best_idx+1})",
+                  fontsize=12, fontweight="bold")
+    ax5.set_xlabel("Generation", fontsize=10)
+    ax5.set_ylabel("Annual Risk / Volatility (%)", fontsize=10)
+    ax5.legend(fontsize=8, loc="upper right")
+    ax5.grid(True, alpha=0.3)
+    ax5.yaxis.set_major_formatter(plt.FuncFormatter(lambda v, _: f"{v:.1f}%"))
+
     fig.suptitle(
         "Optimized GA - Single Objective Portfolio Optimisation (Maximise Sharpe Ratio)\n"
         f"Data: S&P 500 Yahoo Finance {prices.index[0].date()} to {prices.index[-1].date()} | "
         f"Seed: {SEED} | RF = {RISK_FREE_RATE*100:.1f}%",
-        fontsize=13, fontweight="bold", y=0.99)
-    fig.subplots_adjust(top=0.80, bottom=0.13, left=0.045, right=0.99, wspace=0.25)
+        fontsize=13, fontweight="bold", y=0.97)
+
     plt.savefig(chart_path, dpi=160, bbox_inches="tight")
     plt.close(fig)
     return report_path, chart_path, portfolio_table, stock_table, run_results, run_stats
@@ -421,14 +450,16 @@ def main():
 
     runs = max(args.runs, 1)
     print(f"Running GA ({runs} parallel runs, {cfg.generations} generations each) ...\n")
-    best, avg_hist, best_hist, all_metrics, all_histories, best_idx = run_ga_multi(
+    (best, avg_hist, best_hist,
+     all_metrics, all_histories, best_idx,
+     best_return_hist, best_risk_hist) = run_ga_multi(
         mean_daily, cov_daily, returns_matrix, cfg, runs, tickers)
 
     report_path, chart_path, portfolio_table, stock_table, run_results, run_stats = save_report(
         tickers, prices, returns, cfg, best, avg_hist, best_hist,
-        all_metrics, all_histories, runs, best_idx)
+        all_metrics, all_histories, runs, best_idx,
+        best_return_hist, best_risk_hist)
 
-    # ── console output: same order as the report file ──────────────────────
     print("\n" + "=" * 80)
     print(f"PER-RUN RESULTS (all {runs} independent GA runs)")
     print("=" * 80)
